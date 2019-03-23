@@ -17,7 +17,7 @@ import numpy as np
 parser = argparse.ArgumentParser(description='A simple template-based text-to-SQL system.')
 
 # IO
-parser.add_argument('data', help='Data in json format', nargs='+')
+parser.add_argument('--data', default='../../data/atis.json', help='Data in json format', nargs='+')
 parser.add_argument('--unk-max', help='Maximum count to be considered an unknown word', type=int, default=0)
 parser.add_argument('--query-split', help='Use the query split rather than the question split', action='store_true')
 parser.add_argument('--no-vars', help='Run without filling in variables', action='store_true')
@@ -35,21 +35,25 @@ parser.add_argument('--word-vectors', help='Pre-built word embeddings')
 parser.add_argument('--lstm-layers', help='Number of layers in the LSTM', type=int, default=2)
 
 # Training
-parser.add_argument('--max-iters', help='Maximum number of training iterations', type=int, default=50)
-parser.add_argument('--max-bad-iters', help='Maximum number of consecutive training iterations without improvement', type=int, default=5)
-parser.add_argument('--log-freq', help='Number of examples to decode between logging', type=int, default=400)
-parser.add_argument('--eval-freq', help='Number of examples to decode between evaluation runs', type=int, default=800)
+parser.add_argument('--max-iters', help='Maximum number of training iterations', type=int, default=22)
+parser.add_argument('--max-bad-iters', help='Maximum number of consecutive training iterations without improvement', type=int, default=-1)
+parser.add_argument('--log-freq', help='Number of examples to decode between logging', type=int, default=1000000)
+parser.add_argument('--eval-freq', help='Number of examples to decode between evaluation runs', type=int, default=1000000)
 parser.add_argument('--train-noise', help='Noise added to word embeddings as regularization', type=float, default=0.1)
 parser.add_argument('--lstm-dropout', help='Dropout for input and hidden elements of the LSTM', type=float, default=0.0)
-parser.add_argument('--learning-rate', help='Learning rate for optimiser', type=float, default="0.1")
+parser.add_argument('--learning-rate', help='Learning rate for optimiser', type=float, default=0.05)
 
 args = parser.parse_args()
+args.do_test_eval = True
+args.data = [args.data]
 
 import dynet as dy # Loaded late to avoid memory allocation when we just want help info
 
 ## Input ##
 
 def insert_variables(sql, sql_variables, sent, sent_variables):
+    # if sent == 'display flights from city_name1 to city_name0 which depart between departure_time1 and departure_time0':
+    #     print('fuck')
     tokens = []
     tags = []
     seen_sent_variables = set()
@@ -108,7 +112,9 @@ def insert_variables(sql, sql_variables, sent, sent_variables):
             complete.append(sql_variables[token])
         else:
             complete.append(token)
-
+        #if ' '.join(template) == 'SELECT DISTINCT FLIGHTalias0.FLIGHT_ID FROM AIRPORT_SERVICE AS AIRPORT_SERVICEalias0 , AIRPORT_SERVICE AS AIRPORT_SERVICEalias1 , CITY AS CITYalias0 , CITY AS CITYalias1 , FLIGHT AS FLIGHTalias0 WHERE ( ( FLIGHTalias0.DEPARTURE_TIME <= 1845 AND FLIGHTalias0.DEPARTURE_TIME >= 1745 ) AND CITYalias1.CITY_CODE = AIRPORT_SERVICEalias1.CITY_CODE AND CITYalias1.CITY_NAME = " city_name0 " AND FLIGHTalias0.TO_AIRPORT = AIRPORT_SERVICEalias1.AIRPORT_CODE ) AND CITYalias0.CITY_CODE = AIRPORT_SERVICEalias0.CITY_CODE AND CITYalias0.CITY_NAME = " city_name1 " AND FLIGHTalias0.FROM_AIRPORT = AIRPORT_SERVICEalias0.AIRPORT_CODE ;':
+        #    print('fuck')
+        # tr=' '.join(template)
     return (tokens, tags, ' '.join(template), ' '.join(complete))
 
 def get_tagged_data_for_query(data):
@@ -141,6 +147,43 @@ def get_tagged_data_for_query(data):
 
             if not args.use_all_sql:
                 break
+
+# Strat:
+# Element in this list is the instance from get_tagged_data_for_query(example)
+# a instance is a list: [(0),(1),(2),(3)]
+# (0)word: NL in token as a list
+# (1)tag: variables mask. ['O',..,'airport_code0',...'O']. The length of it equal to (0). 'O'=nothing, other=variable name belong to the same position NL token
+# (2)template: SQL with variable name in (1)
+# (3)complete: SQL similar to (2) but variable name instead by NL token, which means this SQL can be execute.
+
+# template is very important in this file and more than the above content. For example in atis.json:
+# {
+#     "text": "display flights from city_name1 to city_name0 which depart between departure_time1 and departure_time0",
+#     "question-split": "train",
+#     "variables": {
+#         "departure_time0": "1800",
+#         "departure_time1": "1400",
+#         "city_name0": "ATLANTA",
+#         "city_name1": "DALLAS"
+#     }
+# },
+# {
+#     "text": "i'd like to fly from city_name1 to city_name0 at approximately 615pm",
+#     "question-split": "train",
+#     "variables": {
+#         "departure_time0": "1845",
+#         "departure_time1": "1745",
+#         "city_name0": "SAN FRANCISCO",
+#         "city_name1": "DALLAS"
+#     }
+# },
+# These two NL refer to a same SQL:
+# "sql": [
+#     "SELECT DISTINCT FLIGHTalias0.FLIGHT_ID FROM AIRPORT_SERVICE AS AIRPORT_SERVICEalias0 , AIRPORT_SERVICE AS AIRPORT_SERVICEalias1 , CITY AS CITYalias0 , CITY AS CITYalias1 , FLIGHT AS FLIGHTalias0 WHERE ( ( FLIGHTalias0.DEPARTURE_TIME <= departure_time0 AND FLIGHTalias0.DEPARTURE_TIME >= departure_time1 ) AND CITYalias1.CITY_CODE = AIRPORT_SERVICEalias1.CITY_CODE AND CITYalias1.CITY_NAME = \"city_name0\" AND FLIGHTalias0.TO_AIRPORT = AIRPORT_SERVICEalias1.AIRPORT_CODE ) AND CITYalias0.CITY_CODE = AIRPORT_SERVICEalias0.CITY_CODE AND CITYalias0.CITY_NAME = \"city_name1\" AND FLIGHTalias0.FROM_AIRPORT = AIRPORT_SERVICEalias0.AIRPORT_CODE ;"
+# ],
+# But it will be two template. because, you can not find departure_time0 and departure_time1 in i'd like to fly from city_name1 to city_name0 at approximately 615pm.
+# So the template of 'display flights from city_name1 to city_name0 which depart between departure_time1 and departure_time0' is as same as orginal sql template.
+# But the template of "i'd like to fly from city_name1 to city_name0 at approximately 615pm" is "SELECT DISTINCT FLIGHTalias0.FLIGHT_ID FROM AIRPORT_SERVICE AS AIRPORT_SERVICEalias0 , AIRPORT_SERVICE AS AIRPORT_SERVICEalias1 , CITY AS CITYalias0 , CITY AS CITYalias1 , FLIGHT AS FLIGHTalias0 WHERE ( ( FLIGHTalias0.DEPARTURE_TIME <= 1845 AND FLIGHTalias0.DEPARTURE_TIME >= 1745 ) AND CITYalias1.CITY_CODE = AIRPORT_SERVICEalias1.CITY_CODE AND CITYalias1.CITY_NAME = \"city_name0\" AND FLIGHTalias0.TO_AIRPORT = AIRPORT_SERVICEalias1.AIRPORT_CODE ) AND CITYalias0.CITY_CODE = AIRPORT_SERVICEalias0.CITY_CODE AND CITYalias0.CITY_NAME = \"city_name1\" AND FLIGHTalias0.FROM_AIRPORT = AIRPORT_SERVICEalias0.AIRPORT_CODE ;"
 
 train = []
 dev = []
@@ -204,6 +247,7 @@ def build_vocab(sentences):
     return vocab_words, vocab_tags, vocab_templates
 
 vocab_words, vocab_tags, vocab_templates = build_vocab(train)
+print(vocab_templates.w2i['SELECT DISTINCT FLIGHTalias0.FLIGHT_ID FROM AIRPORT_SERVICE AS AIRPORT_SERVICEalias0 , AIRPORT_SERVICE AS AIRPORT_SERVICEalias1 , CITY AS CITYalias0 , CITY AS CITYalias1 , FLIGHT AS FLIGHTalias0 WHERE ( ( FLIGHTalias0.DEPARTURE_TIME <= departure_time0 AND FLIGHTalias0.DEPARTURE_TIME >= departure_time1 ) AND CITYalias1.CITY_CODE = AIRPORT_SERVICEalias1.CITY_CODE AND CITYalias1.CITY_NAME = " city_name0 " AND FLIGHTalias0.TO_AIRPORT = AIRPORT_SERVICEalias1.AIRPORT_CODE ) AND CITYalias0.CITY_CODE = AIRPORT_SERVICEalias0.CITY_CODE AND CITYalias0.CITY_NAME = " city_name1 " AND FLIGHTalias0.FROM_AIRPORT = AIRPORT_SERVICEalias0.AIRPORT_CODE ;'])
 UNK = vocab_words.w2i["<UNK>"]
 NWORDS = vocab_words.size()
 NTAGS = vocab_tags.size()
