@@ -183,7 +183,7 @@ def get_tagged_data_for_query(data):
 # ],
 # But it will be two template. because, you can not find departure_time0 and departure_time1 in i'd like to fly from city_name1 to city_name0 at approximately 615pm.
 # So the template of 'display flights from city_name1 to city_name0 which depart between departure_time1 and departure_time0' is as same as orginal sql template.
-# But the template of "i'd like to fly from city_name1 to city_name0 at approximately 615pm" is "SELECT DISTINCT FLIGHTalias0.FLIGHT_ID FROM AIRPORT_SERVICE AS AIRPORT_SERVICEalias0 , AIRPORT_SERVICE AS AIRPORT_SERVICEalias1 , CITY AS CITYalias0 , CITY AS CITYalias1 , FLIGHT AS FLIGHTalias0 WHERE ( ( FLIGHTalias0.DEPARTURE_TIME <= 1845 AND FLIGHTalias0.DEPARTURE_TIME >= 1745 ) AND CITYalias1.CITY_CODE = AIRPORT_SERVICEalias1.CITY_CODE AND CITYalias1.CITY_NAME = \"city_name0\" AND FLIGHTalias0.TO_AIRPORT = AIRPORT_SERVICEalias1.AIRPORT_CODE ) AND CITYalias0.CITY_CODE = AIRPORT_SERVICEalias0.CITY_CODE AND CITYalias0.CITY_NAME = \"city_name1\" AND FLIGHTalias0.FROM_AIRPORT = AIRPORT_SERVICEalias0.AIRPORT_CODE ;"
+# But the template of "i'd like to ... 615pm" is "SELECT DISTINCT FLIGHTalias0.FLIGHT_ID FROM AIRPORT_SERVICE AS AIRPORT_SERVICEalias0 , AIRPORT_SERVICE AS AIRPORT_SERVICEalias1 , CITY AS CITYalias0 , CITY AS CITYalias1 , FLIGHT AS FLIGHTalias0 WHERE ( ( FLIGHTalias0.DEPARTURE_TIME <= 1845 AND FLIGHTalias0.DEPARTURE_TIME >= 1745 ) AND CITYalias1.CITY_CODE = AIRPORT_SERVICEalias1.CITY_CODE AND CITYalias1.CITY_NAME = \"city_name0\" AND FLIGHTalias0.TO_AIRPORT = AIRPORT_SERVICEalias1.AIRPORT_CODE ) AND CITYalias0.CITY_CODE = AIRPORT_SERVICEalias0.CITY_CODE AND CITYalias0.CITY_NAME = \"city_name1\" AND FLIGHTalias0.FROM_AIRPORT = AIRPORT_SERVICEalias0.AIRPORT_CODE ;"
 
 train = []
 dev = []
@@ -246,8 +246,9 @@ def build_vocab(sentences):
 
     return vocab_words, vocab_tags, vocab_templates
 
+# tag can be variable name and other not in NL question but in json.
 vocab_words, vocab_tags, vocab_templates = build_vocab(train)
-print(vocab_templates.w2i['SELECT DISTINCT FLIGHTalias0.FLIGHT_ID FROM AIRPORT_SERVICE AS AIRPORT_SERVICEalias0 , AIRPORT_SERVICE AS AIRPORT_SERVICEalias1 , CITY AS CITYalias0 , CITY AS CITYalias1 , FLIGHT AS FLIGHTalias0 WHERE ( ( FLIGHTalias0.DEPARTURE_TIME <= departure_time0 AND FLIGHTalias0.DEPARTURE_TIME >= departure_time1 ) AND CITYalias1.CITY_CODE = AIRPORT_SERVICEalias1.CITY_CODE AND CITYalias1.CITY_NAME = " city_name0 " AND FLIGHTalias0.TO_AIRPORT = AIRPORT_SERVICEalias1.AIRPORT_CODE ) AND CITYalias0.CITY_CODE = AIRPORT_SERVICEalias0.CITY_CODE AND CITYalias0.CITY_NAME = " city_name1 " AND FLIGHTalias0.FROM_AIRPORT = AIRPORT_SERVICEalias0.AIRPORT_CODE ;'])
+
 UNK = vocab_words.w2i["<UNK>"]
 NWORDS = vocab_words.size()
 NTAGS = vocab_tags.size()
@@ -265,7 +266,7 @@ DIM_HIDDEN_MLP = args.dim_hidden_mlp
 DIM_HIDDEN_TEMPLATE = args.dim_hidden_template
 
 pEmbedding = model.add_lookup_parameters((NWORDS, DIM_WORD))
-if args.word_vectors is not None:
+if args.word_vectors is not None:   # pretrained word vector. False in atis.
     pretrained = []
     with open(args.word_vectors,'rb') as pickleFile:
         embedding = pickle.load(pickleFile)
@@ -276,7 +277,7 @@ if args.word_vectors is not None:
             else:
                 pretrained.append(pEmbedding.row_as_array(word_id))
     pEmbedding.init_from_array(np.array(pretrained))
-if args.mlp:
+if args.mlp:    # multi-layer perceptron. False in atis.
     pHidden = model.add_parameters((DIM_HIDDEN_MLP, DIM_HIDDEN_LSTM*2))
     pOutput = model.add_parameters((NTAGS, DIM_HIDDEN_MLP))
 else:
@@ -392,6 +393,11 @@ def run_eval(data, builders, iteration, step):
             templates_match += 1
         if template in vocab_templates.w2i:
             oracle += 1
+        elif pred_template == template: # This will never happen!
+            print(template)
+
+
+
 
     tok_acc = correct_tags / total_tags
     complete_acc = complete_match / len(data)

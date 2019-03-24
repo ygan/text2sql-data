@@ -49,7 +49,9 @@ Old Oracle Entities |        89 |     56 |       56 |      66 |          95 |   
 New Oracle Entities |        87 | **\*49** |       59 |  **\*59** |          93 |        0 | **\*2** |    6
 Old Oracle All      |       100 |     69 |       78 |      84 |         100 |       11 |    47 |   25
 New Oracle All      |       100 |     66 |       78 |      82 |         100 |       11 |    47 |   25
-
+Baseline: Accuracy of predict complete SQL. This result come from predict template combing predict tag. Baseline close to Oracle Entities because accuracy of predict tag normally is very high.  
+Oracle Entities: Accuracy of predict SQL template. This is a classification result.  
+Oracle All: The Probability of test set SQL templates appearing in training sets. The lower the harder to predict in Oracle Entities.
 ## Requirements
 
 - Python 3
